@@ -1,9 +1,9 @@
 import requests
-import csv
+import json
 import re
 from bs4 import BeautifulSoup
 
-# Order for the sets
+# Order for sets
 set_order = {
     'A1': 1,
     'A1a': 2,
@@ -32,20 +32,27 @@ def extract_card_data(card_url):
         card_description_tag = soup.find('div', class_='card-text-flavor')
         card_description = card_description_tag.text.strip() if card_description_tag else 'No Description'
         
-        # Extract rarity symbols (from prints-current-details span)
+        # Extract rarity symbols and card number (from prints-current-details span)
         rarity_tag = soup.find('div', class_='prints-current-details')
         rarity_symbols = ''
+        card_number = None
         
         if rarity_tag:
             rarity_span = rarity_tag.find_all('span')
             if rarity_span:
                 # Extract rarity from second span
-                rarity_symbols = rarity_span[1].text.strip()  
-
-                # Remove any "pack" related text ("· Charizard pack", "· Arceus pack")
+                rarity_text = rarity_span[1].text.strip()
+                
+                # Extract card number
+                number_match = re.search(r'#(\d+)', rarity_text)
+                if number_match:
+                    card_number = int(number_match.group(1))
+                
+                # Remove card number and any "pack" related text
+                rarity_symbols = re.sub(r'#\d+ · ', '', rarity_text)
                 rarity_symbols = remove_pack_text(rarity_symbols)
 
-        return [card_name, card_url, card_image_url, card_description, rarity_symbols]
+        return [card_name, card_url, card_image_url, card_description, rarity_symbols, card_number]
     return None
 
 def remove_pack_text(rarity_text):
@@ -80,44 +87,42 @@ def replace_crown_symbol(rarity_text):
 # List of sets to scrape
 sets = ['A2b', 'A2a', 'A2', 'A1a', 'A1', 'P-A']
 
-csv_filename = "cards.csv"
+json_filename = "cards.json"
 
-# Open CSV file to write data
+# List to store all card data
 card_data_list = []
-with open(csv_filename, mode='w', newline='', encoding='utf-8') as file:
-    writer = csv.writer(file)
-    #  Header row
-    writer.writerow(['Card Name', 'Card URL', 'Image URL', 'Description', 'Rarity Symbols'])
+
+# Iterate over each set
+for card_set in sets:
+    print(f"Scraping set: {card_set}...")
+    card_urls = get_all_card_urls(card_set)
     
-    # Iterate over each set
-    for card_set in sets:
-        print(f"Scraping set: {card_set}...")
-        card_urls = get_all_card_urls(card_set)
-        
-        if not card_urls:
-            print(f"No cards found for set {card_set}")
-            continue
+    if not card_urls:
+        print(f"No cards found for set {card_set}")
+        continue
 
-        for card_url in card_urls:
-            card_data = extract_card_data(card_url)
-            if card_data:
-                card_data_list.append({
-                    'name': card_data[0],
-                    'url': card_data[1],
-                    'image_url': card_data[2],
-                    'description': card_data[3],
-                    'rarity_symbols': card_data[4],
-                    'set': card_set
-                })
-                print(f"Saved: {card_data[0]} from {card_set}")
+    for card_url in card_urls:
+        card_data = extract_card_data(card_url)
+        if card_data:
+            card_info = {
+                'name': card_data[0],
+                'url': card_data[1],
+                'image_url': card_data[2],
+                'description': card_data[3],
+                'rarity_symbols': 'Promo' if card_set == 'P-A' else card_data[4],
+                'card_number': card_data[5],
+                'set': card_set
+            }
+            if 'Crown Rare' in card_info['rarity_symbols'] and card_set != 'P-A':
+                card_info['rarity_symbols'] = replace_crown_symbol(card_info['rarity_symbols'])
+            card_data_list.append(card_info)
+            print(f"Saved: {card_data[0]} from {card_set}")
 
-    # Sort cards first by set order, then by card number
-    card_data_list.sort(key=lambda card: (set_order.get(card['set'], float('inf')), extract_card_number(card['rarity_symbols'])))
+# Sort cards first by set order, then by card number
+card_data_list.sort(key=lambda card: (set_order.get(card['set'], float('inf')), card['card_number'] if card['card_number'] is not None else float('inf')))
 
-    # Write sorted data to CSV
-    for card in card_data_list:
-        if 'Crown Rare' in card['rarity_symbols']:
-            card['rarity_symbols'] = replace_crown_symbol(card['rarity_symbols'])
-        writer.writerow([card['name'], card['url'], card['image_url'], card['description'], card['rarity_symbols']])
+# Write data to JSON file
+with open(json_filename, 'w', encoding='utf-8') as file:
+    json.dump(card_data_list, file, ensure_ascii=False, indent=2)
 
-print(f"Scraping complete. Data saved to {csv_filename}")
+print(f"Scraping complete. Data saved to {json_filename}")
