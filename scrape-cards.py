@@ -10,7 +10,8 @@ set_order = {
     'A2': 3,
     'A2a': 4,
     'A2b' : 5,
-    'P-A': 6,
+    'A3': 6,
+    'P-A': 7,
 }
 
 # Extract card data from single card page
@@ -85,7 +86,7 @@ def replace_crown_symbol(rarity_text):
     return rarity_text.replace('Crown Rare', '♕')
 
 # List of sets to scrape
-sets = ['A2b', 'A2a', 'A2', 'A1a', 'A1', 'P-A']
+sets = ['A3','A2b', 'A2a', 'A2', 'A1a', 'A1', 'P-A']
 
 json_filename = "cards.json"
 
